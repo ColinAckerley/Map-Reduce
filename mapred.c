@@ -1,8 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "mapred.h"
+#include <ctype.h>
 #include <limits.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include "mapred.h"
 
 int app = 0;
 int impl = 0;
@@ -10,21 +14,11 @@ int maps = 0;
 int reduces = 0;
 FILE *infile;
 FILE *outfile;
+int parentID;
 struct inputList *inputHead = NULL;
 int inputCount = 0;
 int largest = 0;
 int smallest = INT_MAX;
-
-struct HashNode{
-	int num;
-	char *string;
-	struct HashNode* next;
-};
-
-struct inputList{
-    char *data;
-    struct inputList *next;
-};
 
 struct HashNode *HashTable;
 
@@ -51,59 +45,80 @@ int main(int argc, char **argv){
 		}
 	}
 	readInput();
+	/**FOR DEBUGGING
+	printf("App: %d, Impl: %d, Maps: %d, Reduces: %d, inputCount %d\n", app, impl, maps, reduces,inputCount);
 	fflush(stdout);
 	struct inputList *inNode = inputHead;
-	/***FOR DEBUGGING
 	while(inNode != NULL){
 		if(inNode->data != NULL){
 			printf("%s\n", inNode->data);
 		}
 		inNode = inNode->next;
 	}
-	printf("%d %d %d", largest, smallest, inputCount);***/
+	printf("%d %d %d\n", largest, smallest, inputCount);**/
 	
 	HashTable = (struct HashNode *)calloc(1,sizeof(struct HashNode)*reduces);
 	mapSetup();
-	
+	freeData();
+	return 0;
 }
 
 void freeData(){
-	int x;
-	struct inputList *temp;
-	temp = inputHead;
-	for(x=0; x<inputCount; x++){
-		inputHead = inputHead->next;
-		free(temp);
-		temp = inputHead;		
-	}
 	free(HashTable);
 }
 
 void mapSetup(){
-	int x, y;
+	int x, y, nodeCount = 0;
+	pthread_t *threadIDs;
+	if(impl == 1){
+		threadIDs = (pthread_t *)malloc(sizeof(pthread_t)*maps);
+	} else {
+		parentID = getpid();
+	}
 	struct inputList *listChunkEnd, *tempHead, *newHead;
 	newHead = inputHead;
-	for(x=0; x<maps; x++){
+	//Split input into ceiling of inputCount/maps, last thread will get <= input of the others
+	newHead = inputHead;
+	for(x=0; x<maps; x++){		
+		nodeCount++;
 		listChunkEnd = newHead;
-		for(y=0; y<(inputCount/reduces)-1; y++){
-			listChunkEnd = listChunkEnd -> next;
-		}
-		if(x+1 == maps && listChunkEnd -> next != NULL){
-			//if inputCount/reduces not evenly divided, add remainder to last map node
-			listChunkEnd = listChunkEnd -> next;
+		for(y=0; y<(inputCount+maps-1)/maps-1; y++){
+			nodeCount++;
+			if(nodeCount <= inputCount-1){		
+				listChunkEnd = listChunkEnd -> next;
+			}
 		}
 		tempHead = listChunkEnd -> next;
 		listChunkEnd -> next = NULL;
-		//fork/thread part of input to mapnode (FROM inputHead TO listChunkEnd)
 		if(impl == 1){
 			//thread
-			
+			pthread_create(&threadIDs[x], NULL, map, (void *)newHead);
 		} else {
 			//fork
-			
+			fflush(stdout);
+			fork();
+			if(getpid() != parentID){
+				//CHILD CASE
+				printf("CHILD %d EXECUTING\n", x);
+				
+				break;
+			}
 		}	
 		newHead = tempHead;
+		if(nodeCount >= inputCount){
+			break;
+		}
+
 	}
+	if(impl == 1){
+		for(x=0; x<maps; x++){
+			pthread_join(threadIDs[x],NULL);
+			printf("Child thread %d joined\n", (int)threadIDs[x]);
+		}
+	} else {
+		while(wait(NULL) > 0);
+	}
+	printf("PROCESS %d FINISHED\n", getpid());
 }
 
 void readInput(){
@@ -136,67 +151,62 @@ void readInput(){
     }
 }
 
-void *mapSort(void *dataList){
-	struct inputList *dataPtr = (inputList *)dataList;
+void *map(void *dataList){
+	//printf("Child thread\n");
+	fflush(stdout);
+	//generic map to hash data to the hashtable for reduce step, hash function varies on app type
+	struct inputList *dataPtr = (struct inputList *)dataList;
 	struct inputList *temp;
 	int index;
 	temp = dataPtr;
 	while(dataPtr != NULL){
 		temp = temp->next;
 		//map into the hash table
-		index = hashFuncSort(dataPtr->data);
+		if(app == 1){
+			index = hashFuncSort(atoi(dataPtr->data));
+		} else {
+			index = hashFuncWcount(dataPtr->data);
+		}	
 		hashInsert(index, dataPtr);
 		free(dataPtr);
 		dataPtr = temp;		
 	}
+	return NULL;
 }
 
 int hashFuncSort(int value){
+	//hash table of size r contains input value range divided by r 
 	int blockSize = (largest-smallest)/reduces;
-	int x, index = 0;
-	for(x=smallest; x<largest; x=x+blockSize){
-		if(value >= x && value < x+blockSize){
+	int x, index = 0;	
+	for(x=smallest; x<=largest; x=x+blockSize){
+		if(value >= x && value < x+blockSize+reduces){
+			printf("%d value, %d index, %d to %d\n", value, index, x, x+blockSize);
 			return index;
 		} else {
 			index++;
 		}
 	}
+	printf("%d value, %d index, %d to %d\n", value, index, x, x+blockSize);
 	return index;
 }
 
-void hashInsert(index, dataPtr){
+int hashFuncWcount(char *value){
+	int index = 0;
+	return index;
+}
+
+void hashInsert(int index, struct inputList * dataPtr){
+	//inputs value into hashtable
+	struct HashNode *currentNode = &HashTable[index];
+	struct HashNode *newNode = (struct HashNode *)malloc(sizeof(struct HashNode));
 	if(app == 1){
-		
-	struct node *currentNode = hashTable[key];
-	if(hashTable[key] != NULL){
-		currentNode = hashTable[key];
-		if(currentNode -> value == num){
-				printf("duplicate\n");
-				return;
-		}
-		while(currentNode -> next != NULL){
-			if(currentNode -> value == num){
-				printf("duplicate\n");
-				return;
-			}
-			currentNode = currentNode -> next;
-		}
-		struct node *newNode = (struct node *)malloc(sizeof(struct node ));
-		newNode -> value = num;
-		newNode -> next = NULL;
-		currentNode -> next = newNode;
-		printf("inserted\n");
-		return;
+		newNode->num = *dataPtr->data;
 	} else {
-		if(currentNode != NULL && currentNode -> value == num){
-			printf("duplicate\n");
-			return;
-		}
-		struct node *newNode = (struct node *)malloc(sizeof(struct node ));
-		newNode -> value = num;
-		newNode -> next = NULL;
-		hashTable[key] = newNode;
-		printf("inserted\n");
-		return;
+		newNode->string = strdup(dataPtr->data);
 	}
+	newNode -> next = NULL;
+	while(currentNode -> next != NULL){
+		currentNode = currentNode -> next;
+	}
+	currentNode -> next = newNode;
 }
