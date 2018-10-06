@@ -16,4 +16,3 @@ void hashInsert(int, struct inputList *);
 int hashFuncSort(int);
 int hashFuncWcount(char *);
 void *map(void *);
-

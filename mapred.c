@@ -20,7 +20,7 @@ int inputCount = 0;
 int largest = 0;
 int smallest = INT_MAX;
 
-struct HashNode *HashTable;
+struct HashNode **HashTable;
 
 int main(int argc, char **argv){
 	//READ AND PARSE ARGUMENTS
@@ -45,20 +45,31 @@ int main(int argc, char **argv){
 		}
 	}
 	readInput();
-	/**FOR DEBUGGING
+	//FOR DEBUGGING
 	printf("App: %d, Impl: %d, Maps: %d, Reduces: %d, inputCount %d\n", app, impl, maps, reduces,inputCount);
 	fflush(stdout);
 	struct inputList *inNode = inputHead;
 	while(inNode != NULL){
 		if(inNode->data != NULL){
-			printf("%s\n", inNode->data);
+			printf("%s ", inNode->data);
 		}
 		inNode = inNode->next;
 	}
-	printf("%d %d %d\n", largest, smallest, inputCount);**/
+	printf("\n");
 	
-	HashTable = (struct HashNode *)calloc(1,sizeof(struct HashNode)*reduces);
+	HashTable = (struct HashNode **)calloc(1,sizeof(struct HashNode*)*reduces);
 	mapSetup();
+	
+	struct HashNode *temp;
+	for(x=0; x<reduces; x++){
+		temp = HashTable[x];
+		while(temp != NULL){
+			printf("%d ", temp->num);
+			temp = temp->next;
+		}
+	}
+	printf("\n");
+	
 	freeData();
 	return 0;
 }
@@ -78,13 +89,12 @@ void mapSetup(){
 	struct inputList *listChunkEnd, *tempHead, *newHead;
 	newHead = inputHead;
 	//Split input into ceiling of inputCount/maps, last thread will get <= input of the others
-	newHead = inputHead;
 	for(x=0; x<maps; x++){		
 		nodeCount++;
 		listChunkEnd = newHead;
 		for(y=0; y<(inputCount+maps-1)/maps-1; y++){
 			nodeCount++;
-			if(nodeCount <= inputCount-1){		
+			if(nodeCount <= inputCount){		
 				listChunkEnd = listChunkEnd -> next;
 			}
 		}
@@ -99,7 +109,7 @@ void mapSetup(){
 			fork();
 			if(getpid() != parentID){
 				//CHILD CASE
-				printf("CHILD %d EXECUTING\n", x);
+				//printf("CHILD %d EXECUTING\n", x);
 				
 				break;
 			}
@@ -113,12 +123,12 @@ void mapSetup(){
 	if(impl == 1){
 		for(x=0; x<maps; x++){
 			pthread_join(threadIDs[x],NULL);
-			printf("Child thread %d joined\n", (int)threadIDs[x]);
+			//printf("Child thread %d joined\n", (int)threadIDs[x]);
 		}
 	} else {
 		while(wait(NULL) > 0);
 	}
-	printf("PROCESS %d FINISHED\n", getpid());
+	//printf("PROCESS %d FINISHED\n", getpid());
 }
 
 void readInput(){
@@ -180,13 +190,11 @@ int hashFuncSort(int value){
 	int x, index = 0;	
 	for(x=smallest; x<=largest; x=x+blockSize){
 		if(value >= x && value < x+blockSize+reduces){
-			printf("%d value, %d index, %d to %d\n", value, index, x, x+blockSize);
 			return index;
 		} else {
 			index++;
 		}
 	}
-	printf("%d value, %d index, %d to %d\n", value, index, x, x+blockSize);
 	return index;
 }
 
@@ -197,16 +205,21 @@ int hashFuncWcount(char *value){
 
 void hashInsert(int index, struct inputList * dataPtr){
 	//inputs value into hashtable
-	struct HashNode *currentNode = &HashTable[index];
+	struct HashNode *currentNode = HashTable[index];
 	struct HashNode *newNode = (struct HashNode *)malloc(sizeof(struct HashNode));
 	if(app == 1){
-		newNode->num = *dataPtr->data;
+		//printf("inserted");
+		newNode->num = atoi(dataPtr->data);
 	} else {
 		newNode->string = strdup(dataPtr->data);
 	}
 	newNode -> next = NULL;
-	while(currentNode -> next != NULL){
-		currentNode = currentNode -> next;
+	if(currentNode == NULL){
+		HashTable[index] = newNode;
+	} else {
+		while(currentNode -> next != NULL){
+			currentNode = currentNode -> next;
+		}
+		currentNode -> next = newNode;
 	}
-	currentNode -> next = newNode;
 }
