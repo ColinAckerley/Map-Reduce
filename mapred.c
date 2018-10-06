@@ -249,14 +249,16 @@ void hashInsert(int index, struct inputList * dataPtr){
 	}
 	pthread_mutex_unlock(&lock1);
 }
-<<<<<<< HEAD
-=======
 int stringCmpFunc(const void *a, const void *b) 
 { 
     const char **ia = (const char **)a;
     const char **ib = (const char **)b;
     return strcmp(*ia, *ib);
 } 
+int numCmpFunc (const void * a, const void * b) 
+{
+   return ( *(int*)a - *(int*)b );
+}
 void reduce(int index) //Reduce function for integers
 {
 	int curSize = 0; //Size of the current linked list
@@ -278,11 +280,18 @@ void reduce(int index) //Reduce function for integers
 			linkedList = linkedList->next;
 			linkedListTraverse++;
 		}
-		qsort(toSort, curSize, sizeof(int), numCmpFunc); //Sort the current node
+		printf("Unsorted:\n");
 		int i =0;
 		for(; i < curSize; i++)
 		{
-			printf("%d", toSort[i]);
+			printf("%d ", toSort[i]);
+		}
+		qsort(toSort, curSize, sizeof(int), numCmpFunc); //Sort the current node
+		printf("SORTED: \n");
+		i =0;
+		for(; i < curSize; i++)
+		{
+			printf("%d ", toSort[i]);
 		}
 	}
 	else
@@ -291,16 +300,45 @@ void reduce(int index) //Reduce function for integers
 		int linkedListTraverse = 0; //Array index for each linked list node
 		while(linkedList != NULL)
 		{
-			toSort[linkedListTraverse] = linkedList->string; //Copy the data from the linked list into an array 
+			strcpy(toSort[linkedListTraverse], linkedList->string); //Copy the data from the linked list into an array 
 			linkedList = linkedList->next;
 			linkedListTraverse++;
 		}
-		qsort(toSort, curSize, sizeof(char*), stringCmpFunc); //Sort the current node
 		int i =0;
+		while(i < curSize)
+		{
+			char* str = toSort[i];
+			char *p;
+			for (p = str; *p != '\0'; p++)
+			    *p = (char)tolower(*p);
+			i++;
+		}
+		qsort(toSort, curSize, sizeof(char*), stringCmpFunc); //Sort the current node
+		i = 0;
 		for(;i < curSize; i++)
 		{
 			printf("%s", toSort[i]);
 		}
+		
+		int curWordIndex = 0;
+		int checkWordIndex = 1;
+		wordCount *wordHead = (wordCount*) malloc(sizeof(wordCount));
+		wordCount *curWord = wordHead;
+		while(curWordIndex < curSize)
+		{
+			curWord = (wordCount*) malloc(sizeof(wordCount));
+			curWord->word = toSort[checkWordIndex];
+			curWord->count = 1;
+			while(strcmp(toSort[curWordIndex], toSort[checkWordIndex]) == 0)
+			{
+				checkWordIndex++;
+				curWord->count++;
+				if(checkWordIndex >= curSize)
+					break;
+			}
+			curWordIndex = checkWordIndex;
+			checkWordIndex = curWordIndex++;
+			curWord = curWord->next;
+		}
 	}
 }
->>>>>>> 9f9852741c16638cd9265282125304c3c75f78c0
