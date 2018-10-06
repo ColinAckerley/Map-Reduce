@@ -249,3 +249,58 @@ void hashInsert(int index, struct inputList * dataPtr){
 	}
 	pthread_mutex_unlock(&lock1);
 }
+<<<<<<< HEAD
+=======
+int stringCmpFunc(const void *a, const void *b) 
+{ 
+    const char **ia = (const char **)a;
+    const char **ib = (const char **)b;
+    return strcmp(*ia, *ib);
+} 
+void reduce(int index) //Reduce function for integers
+{
+	int curSize = 0; //Size of the current linked list
+	struct HashNode *head = HashTable[index]; //Get the head of the linked list from the hashtable
+	struct HashNode *linkedList = head; //Pointer to the head to traverse the linked list
+	while(linkedList != NULL) //Gets the size of the current linked list 
+	{
+		curSize++;
+		linkedList = linkedList->next;
+	}
+	linkedList = head;
+	if(app==1)
+	{
+		int linkedListTraverse = 0; //Array index for each linked list node
+		int toSort[curSize]; //Creates an array to be used with quicksort 
+		while(linkedList != NULL)
+		{
+			toSort[linkedListTraverse] = linkedList->num; //Copy the data from the linked list into an array 
+			linkedList = linkedList->next;
+			linkedListTraverse++;
+		}
+		qsort(toSort, curSize, sizeof(int), numCmpFunc); //Sort the current node
+		int i =0;
+		for(; i < curSize; i++)
+		{
+			printf("%d", toSort[i]);
+		}
+	}
+	else
+	{
+		char* toSort[curSize];
+		int linkedListTraverse = 0; //Array index for each linked list node
+		while(linkedList != NULL)
+		{
+			toSort[linkedListTraverse] = linkedList->string; //Copy the data from the linked list into an array 
+			linkedList = linkedList->next;
+			linkedListTraverse++;
+		}
+		qsort(toSort, curSize, sizeof(char*), stringCmpFunc); //Sort the current node
+		int i =0;
+		for(;i < curSize; i++)
+		{
+			printf("%s", toSort[i]);
+		}
+	}
+}
+>>>>>>> 9f9852741c16638cd9265282125304c3c75f78c0
