@@ -79,6 +79,7 @@ int main(int argc, char **argv){
 		printf("\n");
 		
 	}**/
+	reduce(0);
 	freeData();
 	pthread_mutex_destroy(&lock1);
 	return 0;
@@ -259,7 +260,16 @@ int numCmpFunc (const void * a, const void * b)
 {
    return ( *(int*)a - *(int*)b );
 }
-void reduce(int index) //Reduce function for integers
+/*void reduceSetup()
+{
+	int i =0;
+	for(i < numReduces; i++)
+	{
+		//CREATE THREAD AND CALL REDUCE
+	}
+}
+* */
+void reduce(int index) //Reduce function 
 {
 	int curSize = 0; //Size of the current linked list
 	struct HashNode *head = HashTable[index]; //Get the head of the linked list from the hashtable
@@ -296,16 +306,17 @@ void reduce(int index) //Reduce function for integers
 	}
 	else
 	{
-		char* toSort[curSize];
+		char *toSort[curSize];
 		int linkedListTraverse = 0; //Array index for each linked list node
 		while(linkedList != NULL)
 		{
-			strcpy(toSort[linkedListTraverse], linkedList->string); //Copy the data from the linked list into an array 
+			toSort[linkedListTraverse] = (char*) malloc(sizeof(linkedList->string));
+			strcpy(toSort[linkedListTraverse],linkedList->string); //Copy the data from the linked list into an array 
 			linkedList = linkedList->next;
 			linkedListTraverse++;
 		}
-		int i =0;
-		while(i < curSize)
+		int i = 0;
+		while(i < curSize) //Convert all of the words to lowercase
 		{
 			char* str = toSort[i];
 			char *p;
@@ -313,31 +324,55 @@ void reduce(int index) //Reduce function for integers
 			    *p = (char)tolower(*p);
 			i++;
 		}
-		qsort(toSort, curSize, sizeof(char*), stringCmpFunc); //Sort the current node
 		i = 0;
-		for(;i < curSize; i++)
-		{
-			printf("%s", toSort[i]);
+		qsort(toSort, curSize, sizeof(char*), stringCmpFunc); //Sort the current node
+        while(i < curSize)
+        {
+			printf("%s\n", toSort[i]);
+			i++;
 		}
-		
 		int curWordIndex = 0;
 		int checkWordIndex = 1;
-		wordCount *wordHead = (wordCount*) malloc(sizeof(wordCount));
+		wordCount *wordHead = NULL;
 		wordCount *curWord = wordHead;
 		while(curWordIndex < curSize)
 		{
 			curWord = (wordCount*) malloc(sizeof(wordCount));
-			curWord->word = toSort[checkWordIndex];
-			curWord->count = 1;
-			while(strcmp(toSort[curWordIndex], toSort[checkWordIndex]) == 0)
+			curWord->word = toSort[curWordIndex]; //Set the word
+			curWord->count = 1; //Start the count out at 1
+			while(strcmp(toSort[curWordIndex], toSort[checkWordIndex]) == 0) //While the two words are equal
 			{
-				checkWordIndex++;
+				checkWordIndex++; //Advance the leading index check
 				curWord->count++;
-				if(checkWordIndex >= curSize)
+				if(checkWordIndex >= curSize) //If the leading index goes beyond the array bounds
 					break;
 			}
-			curWordIndex = checkWordIndex;
-			checkWordIndex = curWordIndex++;
+			if(checkWordIndex < curSize)
+			{
+				curWordIndex = checkWordIndex;
+				checkWordIndex = curWordIndex + 1;
+			}
+			if(checkWordIndex >= curSize) //If the leading index goes beyond the array bounds
+			{
+					if(strcmp(curWord->word, toSort[curWordIndex]) != 0)
+					{
+						printf("%s %d\n", curWord->word, curWord->count);
+						curWord = curWord->next;
+						curWord = (wordCount*) malloc(sizeof(wordCount));
+						curWord->word = toSort[curWordIndex]; //Set the word
+						curWord->count = 1; //Start the count out at 1
+					}
+					break;
+			}
+			//printf("CurWordIndex: %d\n CheckWordIndex: %d\n",curWordIndex, checkWordIndex);
+			printf("%s %d\n", curWord->word, curWord->count);
+			curWord = curWord->next; //Advance to the next node in the linked list
+		}
+		printf("%s %d\n", curWord->word, curWord->count);
+		curWord = wordHead;
+		while(curWord != NULL)
+		{
+			printf("%s %d\n", curWord->word, curWord->count);
 			curWord = curWord->next;
 		}
 	}

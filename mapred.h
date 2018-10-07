@@ -11,7 +11,7 @@ typedef struct wordCount
 {
 	int count;
 	char *word;
-	struct wordCount *next;
+	struct wordCount* next;
 } wordCount;
 int main(int , char **);
 void readinput();
