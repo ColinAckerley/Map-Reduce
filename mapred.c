@@ -56,12 +56,12 @@ int main(int argc, char **argv){
 		}
 		inNode = inNode->next;
 	}
-	printf("\n");
+	printf("\n");ma
 	**/
 	pthread_mutex_init(&lock1, NULL);
 	HashTable = (struct HashNode **)calloc(1,sizeof(struct HashNode*)*reduces);
 	mapSetup();
-	
+	reduceSetup();
 	/**MORE DEBUGGING
 	if(getpid() == parentID){
 		struct HashNode *temp;
@@ -79,7 +79,6 @@ int main(int argc, char **argv){
 		printf("\n");
 		
 	}**/
-	reduce(0);
 	freeData();
 	pthread_mutex_destroy(&lock1);
 	return 0;
@@ -260,17 +259,22 @@ int numCmpFunc (const void * a, const void * b)
 {
    return ( *(int*)a - *(int*)b );
 }
-/*void reduceSetup()
+void reduceSetup()
 {
-	int i =0;
-	for(i < numReduces; i++)
+	pthread_t *threadIDs;
+	int i = 0;
+	if(impl == 1)
 	{
-		//CREATE THREAD AND CALL REDUCE
+		threadIDs = (pthread_t *)malloc(sizeof(pthread_t)*reduces);
+		for(;i < reduces-1; i++)
+		{
+			pthread_create(&threadIDs[i], NULL, reduce, (void*)(&i));
+		}
 	}
 }
-* */
-void reduce(int index) //Reduce function 
+void* reduce(void* num) //Reduce function 
 {
+	int index = *(int*)num;
 	int curSize = 0; //Size of the current linked list
 	struct HashNode *head = HashTable[index]; //Get the head of the linked list from the hashtable
 	struct HashNode *linkedList = head; //Pointer to the head to traverse the linked list
@@ -376,4 +380,6 @@ void reduce(int index) //Reduce function
 			curWord = curWord->next;
 		}
 	}
+	printf("End");
+	return (void*)0;
 }

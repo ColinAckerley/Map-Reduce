@@ -22,7 +22,8 @@ void hashInsert(int, struct inputList *);
 int hashFuncSort(int);
 int hashFuncWcount(char *);
 void *map(void *);
+void reduceSetup();
 int numCmpFunc (const void *, const void *);
 int strCmpFunc(const void *, const void *);
-void reduce(int);
+void* reduce(void*);
 
