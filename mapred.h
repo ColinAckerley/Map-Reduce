@@ -7,18 +7,23 @@ struct HashNode{
 	char *string;
 	struct HashNode* next;
 };
+struct shmNode{
+	int taken;
+	int index;
+	int num;
+	char string[2048];
+};
+struct shmLockNode{
+	pthread_mutex_t mutex;
+    pthread_cond_t  condition;
+};
 int main(int , char **);
 void readinput();
 void mapSetup();
 void readInput();
 void freeData();
-void hashInsert(int, struct inputList *);
+void hashInsert(int, int, char *);
 int hashFuncSort(int);
 int hashFuncWcount(char *);
 void *map(void *);
-<<<<<<< HEAD
-=======
-int numCmpFunc (const void *, const void *);
-int strCmpFunc(const void *, const void *);
-void reduce(int);
->>>>>>> 9f9852741c16638cd9265282125304c3c75f78c0
+void marshallHashTable();

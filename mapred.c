@@ -6,6 +6,9 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/wait.h>
+#include <sys/ipc.h>
+#include <sys/types.h>
+#include <sys/shm.h>
 #include "mapred.h"
 
 int app = 0;
@@ -21,6 +24,10 @@ int largest = 0;
 int smallest = INT_MAX;
 
 struct HashNode **HashTable;
+int shmid;
+struct shmNode *shmArray;
+int shmLockid;
+struct shmLockNode *shmLock;
 pthread_mutex_t lock1;
 
 int main(int argc, char **argv){
@@ -46,8 +53,9 @@ int main(int argc, char **argv){
 		}
 	}
 	readInput();
-	/**FOR DEBUGGING
 	printf("App: %d, Impl: %d, Maps: %d, Reduces: %d, inputCount %d\n", app, impl, maps, reduces,inputCount);
+	/**FOR DEBUGGING
+	
 	fflush(stdout);
 	struct inputList *inNode = inputHead;
 	while(inNode != NULL){
@@ -58,11 +66,10 @@ int main(int argc, char **argv){
 	}
 	printf("\n");
 	**/
-	pthread_mutex_init(&lock1, NULL);
 	HashTable = (struct HashNode **)calloc(1,sizeof(struct HashNode*)*reduces);
 	mapSetup();
 	
-	/**MORE DEBUGGING
+	//MORE DEBUGGING
 	if(getpid() == parentID){
 		struct HashNode *temp;
 		for(x=0; x<reduces; x++){
@@ -78,69 +85,13 @@ int main(int argc, char **argv){
 		}
 		printf("\n");
 		
-	}**/
+	}
 	freeData();
 	pthread_mutex_destroy(&lock1);
 	return 0;
 }
 
-void freeData(){
-	free(HashTable);
-}
-
-void mapSetup(){
-	int x, y, nodeCount = 0;
-	pthread_t *threadIDs;
-	if(impl == 1){
-		threadIDs = (pthread_t *)malloc(sizeof(pthread_t)*maps);
-	}
-	parentID = getpid();
-	struct inputList *listChunkEnd, *tempHead, *newHead;
-	newHead = inputHead;
-	//Split input into ceiling of inputCount/maps, last thread will get <= input of the others
-	for(x=0; x<maps; x++){
-		if(nodeCount >= inputCount){
-			pthread_create(&threadIDs[x], NULL, map, NULL);
-			continue;
-		}	
-		nodeCount++;
-		listChunkEnd = newHead;
-		for(y=0; y<(inputCount+maps-1)/maps-1; y++){
-			nodeCount++;
-			if(nodeCount <= inputCount){		
-				listChunkEnd = listChunkEnd -> next;
-			}
-		}
-		tempHead = listChunkEnd -> next;
-		listChunkEnd -> next = NULL;
-		if(impl == 1){
-			//thread
-			pthread_create(&threadIDs[x], NULL, map, (void *)newHead);
-		} else {
-			//fork
-			fflush(stdout);
-			fork();
-			if(getpid() != parentID){
-				//CHILD CASE
-				printf("CHILD %d EXECUTING\n", x);
-				map(newHead);
-				break;
-			}
-		}	
-		newHead = tempHead;
-	}
-	if(impl == 1){
-		for(x=0; x<maps; x++){
-			pthread_join(threadIDs[x],NULL);
-			printf("Child thread %d joined\n", (int)threadIDs[x]);
-		}
-	} else {
-		while(wait(NULL) > 0);
-	}
-	//printf("PROCESS %d FINISHED\n", getpid());
-}
-
-void readInput(){
+void readInput(){	
 	//reads input, parses into a linked list (word/number per node),
 	struct inputList *inNode = NULL;
 	inNode = (struct inputList *)calloc(1,sizeof(struct inputList)*1);
@@ -170,6 +121,89 @@ void readInput(){
     }
 }
 
+void freeData(){
+	free(HashTable);
+}
+
+void mapSetup(){
+	int x, y, nodeCount = 0;
+	pthread_t *threadIDs;
+	if(impl == 1){
+		threadIDs = (pthread_t *)malloc(sizeof(pthread_t)*maps);
+		pthread_mutex_init(&lock1, NULL);
+	} else {
+		shmid = shmget(IPC_PRIVATE, sizeof(struct shmNode)*inputCount,IPC_CREAT|0666);
+		shmArray = (struct shmNode *)shmat(shmid,0,0);
+		shmLockid = shmget(IPC_PRIVATE, sizeof(struct shmLockNode),IPC_CREAT|0666);
+		shmLock = (struct shmLockNode *)shmat(shmLockid,0,0);
+		pthread_mutexattr_t mutexAttribute;
+		pthread_mutexattr_init(&mutexAttribute);
+		pthread_mutexattr_setpshared(&mutexAttribute, PTHREAD_PROCESS_SHARED);
+		pthread_mutex_init(&shmLock->mutex, &mutexAttribute);
+		//~ pthread_condattr_t conditionAttribute;
+		//~ pthread_condattr_init(&conditionAttribute);
+		//~ pthread_condattr_setpshared(&conditionAttribute, PTHREAD_PROCESS_SHARED);
+		//~ pthread_cond_init(&shmLock->condition, &conditionAttribute);
+	}
+	parentID = getpid();
+	struct inputList *listChunkEnd, *tempHead, *newHead;
+	newHead = inputHead;
+	//Split input into ceiling of inputCount/maps, last thread will get <= input of the others
+	for(x=0; x<maps; x++){
+		if(nodeCount >= inputCount){
+			pthread_create(&threadIDs[x], NULL, map, NULL);
+			continue;
+		}	
+		nodeCount++;
+		listChunkEnd = newHead;
+		for(y=0; y<(inputCount+maps-1)/maps-1; y++){
+			nodeCount++;
+			if(nodeCount <= inputCount){		
+				listChunkEnd = listChunkEnd -> next;
+			}
+		}
+		tempHead = listChunkEnd -> next;
+		listChunkEnd -> next = NULL;
+		if(impl == 1){
+			pthread_create(&threadIDs[x], NULL, map, (void *)newHead);
+		} else {
+			fflush(stdout);
+			fork();
+			if(getpid() != parentID){
+				printf("CHILD %d EXECUTING\n", x);
+				map(newHead);
+				break;
+			}
+		}	
+		newHead = tempHead;
+	}
+	if(impl == 1){
+		for(x=0; x<maps; x++){
+			pthread_join(threadIDs[x],NULL);
+			//printf("Child thread %d joined\n", (int)threadIDs[x]);
+		}
+	} else {
+		for(x=0; x<maps; x++){
+			wait(NULL);
+		}
+		if(getpid() == parentID){
+			for(x=0; x<inputCount; x++){
+				//printf("%d %d %d %s\n", shmArray[x].taken, shmArray[x].index, shmArray[x].num, shmArray[x].string);
+				if(app == 1){
+					hashInsert((int)shmArray[x].index, (int)shmArray[x].num, "");
+				} else {
+					hashInsert((int)shmArray[x].index, 0, (char *)shmArray[x].string);
+				}
+			}
+			//printf("\n");
+			shmctl(shmid, IPC_RMID, NULL);
+			shmdt((void *)shmArray);
+			shmctl(shmLockid, IPC_RMID, NULL);
+			shmdt((void *)shmLock);
+		}
+	}
+}
+
 void *map(void *dataList){
 	if(dataList == NULL){
 		return NULL;
@@ -185,13 +219,27 @@ void *map(void *dataList){
 		//map into the hash table
 		if(app == 1){
 			index = hashFuncSort(atoi(dataPtr->data));
+			hashInsert(index, atoi(dataPtr->data), "");
+			//printf("%d \n", index);
 		} else {
 			index = hashFuncWcount(dataPtr->data);
+			hashInsert(index, 0, dataPtr->data);
 		}
-		if(impl == 1){	
-			hashInsert(index, dataPtr);
-		} else {
-			//SHARED MEMORY INSERT
+		if(impl == 0){
+			int x = 0;
+			//race condition
+			pthread_mutex_lock(&shmLock->mutex);
+			while(shmArray[x].taken == 1){
+				x++;
+			}
+			shmArray[x].taken = 1;
+			shmArray[x].index = index;
+			if(app == 1){
+				shmArray[x].num = atoi(dataPtr->data);
+			} else {
+				strcpy(shmArray[x].string,dataPtr->data);
+			}
+			pthread_mutex_unlock(&shmLock->mutex);
 		}
 		free(dataPtr);
 		dataPtr = temp;		
@@ -202,9 +250,10 @@ void *map(void *dataList){
 int hashFuncSort(int value){
 	//hash table of size r contains input value range divided by r 
 	int blockSize = (largest-smallest)/reduces;
+	blockSize = blockSize == 0 ? 1 : blockSize;
 	int x, y = smallest;	
 	for(x=0; x<reduces-1; x++){
-		if(value >= y && value < y+blockSize){
+		if(value < y+blockSize){
 			return x;
 		} else {
 			y = y+blockSize;
@@ -216,6 +265,7 @@ int hashFuncSort(int value){
 int hashFuncWcount(char *string){
 	int value = (int)tolower(string[0]);
 	int blockSize = (26)/reduces;
+	blockSize = blockSize == 0 ? 1 : blockSize;
 	int x, y = 97;
 	for(x=0; x<reduces-1; x++){
 		if(value < y+blockSize){
@@ -227,16 +277,15 @@ int hashFuncWcount(char *string){
 	return x;
 }
 
-void hashInsert(int index, struct inputList * dataPtr){
+void hashInsert(int index, int num, char *string){
 	//inputs value into hashtable
 	pthread_mutex_lock(&lock1);
 	struct HashNode *currentNode = HashTable[index];
 	struct HashNode *newNode = (struct HashNode *)malloc(sizeof(struct HashNode));
 	if(app == 1){
-		//printf("inserted");
-		newNode->num = atoi(dataPtr->data);
+		newNode->num = num;
 	} else {
-		newNode->string = strdup(dataPtr->data);
+		newNode->string = strdup(string);
 	}
 	newNode -> next = NULL;
 	if(currentNode == NULL){
@@ -249,58 +298,3 @@ void hashInsert(int index, struct inputList * dataPtr){
 	}
 	pthread_mutex_unlock(&lock1);
 }
-<<<<<<< HEAD
-=======
-int stringCmpFunc(const void *a, const void *b) 
-{ 
-    const char **ia = (const char **)a;
-    const char **ib = (const char **)b;
-    return strcmp(*ia, *ib);
-} 
-void reduce(int index) //Reduce function for integers
-{
-	int curSize = 0; //Size of the current linked list
-	struct HashNode *head = HashTable[index]; //Get the head of the linked list from the hashtable
-	struct HashNode *linkedList = head; //Pointer to the head to traverse the linked list
-	while(linkedList != NULL) //Gets the size of the current linked list 
-	{
-		curSize++;
-		linkedList = linkedList->next;
-	}
-	linkedList = head;
-	if(app==1)
-	{
-		int linkedListTraverse = 0; //Array index for each linked list node
-		int toSort[curSize]; //Creates an array to be used with quicksort 
-		while(linkedList != NULL)
-		{
-			toSort[linkedListTraverse] = linkedList->num; //Copy the data from the linked list into an array 
-			linkedList = linkedList->next;
-			linkedListTraverse++;
-		}
-		qsort(toSort, curSize, sizeof(int), numCmpFunc); //Sort the current node
-		int i =0;
-		for(; i < curSize; i++)
-		{
-			printf("%d", toSort[i]);
-		}
-	}
-	else
-	{
-		char* toSort[curSize];
-		int linkedListTraverse = 0; //Array index for each linked list node
-		while(linkedList != NULL)
-		{
-			toSort[linkedListTraverse] = linkedList->string; //Copy the data from the linked list into an array 
-			linkedList = linkedList->next;
-			linkedListTraverse++;
-		}
-		qsort(toSort, curSize, sizeof(char*), stringCmpFunc); //Sort the current node
-		int i =0;
-		for(;i < curSize; i++)
-		{
-			printf("%s", toSort[i]);
-		}
-	}
-}
->>>>>>> 9f9852741c16638cd9265282125304c3c75f78c0
