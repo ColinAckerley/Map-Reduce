@@ -21,7 +21,7 @@ struct inputList *inputHead = NULL;
 int inputCount = 0;
 int largest = 0;
 int smallest = INT_MAX;
-reduceNode **sortedArray;
+struct reduceNode **sortedArray;
 struct HashNode **HashTable;
 int shmid;
 struct shmNode *shmArray;
@@ -54,31 +54,31 @@ int main(int argc, char **argv){
 	readInput();
 	printf("App: %d, Impl: %d, Maps: %d, Reduces: %d, inputCount %d\n", app, impl, maps, reduces,inputCount);
 	HashTable = (struct HashNode **)calloc(1,sizeof(struct HashNode*)*reduces);
-	sortedArray = (reduceNode **)calloc(1,sizeof(reduceNode*)*inputCount);
+	sortedArray = (struct reduceNode **)calloc(1,sizeof(struct reduceNode*)*inputCount);
 	mapSetup();
 	reduceSetup(); 
-	int i = 0;
-	while(i < inputCount)
-	{
-		printf("%s %d\n",sortedArray[i]->word, sortedArray[i]->count);
-		i++;
-	}
-	//MORE DEBUGGING
-	if(getpid() == parentID){
-		struct HashNode *temp;
-		for(x=0; x<reduces; x++){
-			temp = HashTable[x];
-			while(temp != NULL){
-				if(app == 1){
-					//printf("%d ", temp->num);
-				} else {
-					//printf("%s ", temp->string);
-				}
-				temp = temp->next;
-			}
-		}
-		printf("\n");
-	}
+	//~ int i = 0;
+	//~ while(i < inputCount)
+	//~ {
+		//~ printf("%s %d\n",sortedArray[i]->word, sortedArray[i]->count);
+		//~ i++;
+	//~ }
+	//~ //MORE DEBUGGING
+	//~ if(getpid() == parentID){
+		//~ struct HashNode *temp;
+		//~ for(x=0; x<reduces; x++){
+			//~ temp = HashTable[x];
+			//~ while(temp != NULL){
+				//~ if(app == 1){
+					//~ //printf("%d ", temp->num);
+				//~ } else {
+					//~ //printf("%s ", temp->string);
+				//~ }
+				//~ temp = temp->next;
+			//~ }
+		//~ }
+		//~ printf("\n");
+	//~ }
 	freeData();
 	pthread_mutex_destroy(&lock1);
 	return 0;
@@ -110,12 +110,37 @@ void readInput(){
 			inNode = inNode -> next;
 			token = strtok(NULL, " .,;:!-\n\t\r");
 		}
+		free(token);
 		memset(buffer, 0, 2048);
     }
+    free(inNode);
 }
 
 void freeData(){
+	int x;
+	struct HashNode *temp1, *temp2;
+	for(x=0; x<reduces; x++){
+		temp1 = HashTable[x];
+		while(temp1 != NULL){
+			if(app == 0){
+				free(temp1->string);
+			}
+			temp2 = temp1->next;
+			free(temp1);
+			temp1 = temp2;
+		}
+	}
 	free(HashTable);
+	for(x=0; x<inputCount; x++){
+		if(sortedArray[x] != NULL){
+			if(app == 0){
+				free(sortedArray[x]->word);
+			}
+			//printf("%d ", &sortedArray[x]->num);
+			//free(sortedArray[x]);
+		}
+	}
+	free(sortedArray);
 }
 
 void mapSetup(){
@@ -174,6 +199,8 @@ void mapSetup(){
 			pthread_join(threadIDs[x],NULL);
 			//printf("Child thread %d joined\n", (int)threadIDs[x]);
 		}
+		free(threadIDs);
+		
 	} else {
 		for(x=0; x<maps; x++){
 			wait(NULL);
@@ -233,6 +260,7 @@ void *map(void *dataList){
 			}
 			pthread_mutex_unlock(&shmLock->mutex);
 		}
+		free(dataPtr->data);
 		free(dataPtr);
 		dataPtr = temp;		
 	}
@@ -290,85 +318,79 @@ void hashInsert(int index, int num, char *string){
 	}
 	pthread_mutex_unlock(&lock1);
 }
-int stringCmpFunc(const void *a, const void *b) 
-{ 
+
+int stringCmpFunc(const void *a, const void *b){ 
     const char **ia = (const char **)a;
     const char **ib = (const char **)b;
     return strcmp(*ia, *ib);
 } 
-int numCmpFunc (const void * a, const void * b) 
-{
-   return ( *(int*)a - *(int*)b );
+
+int numCmpFunc (const void * a, const void * b){
+	const int *A = a, *B = b;
+	return (*A > *B) - (*A < *B);
 }
-void reduceSetup()
-{
+
+void reduceSetup(){
 	pthread_t *threadIDs;
 	int* values;
-	int i = 0;
-	if(impl == 1)
-	{
+	int i;
+	if(impl == 1){
 		threadIDs = (pthread_t *)malloc(sizeof(pthread_t)*reduces);
-		values = malloc(sizeof(int)*reduces);
-		for(;i < reduces; i++)
-		{
+		values = (int *)malloc(sizeof(int)*reduces);
+		for(i=0; i<reduces; i++){
 			values[i] = i;
-			pthread_create(&threadIDs[i], NULL, reduce,&values[i]);
-			sleep(1);
+			pthread_create(&threadIDs[i], NULL, reduce, &values[i]);
 		}
 	}
+	if(impl == 1){
+		for(i=0; i<reduces; i++){
+			pthread_join(threadIDs[i],NULL);
+			//printf("Child thread %d joined\n", (int)threadIDs[x]);
+		}
+		free(threadIDs);
+		free(values);
+	}
 }
-void* reduce(void* num) //Reduce function 
-{
+
+void *reduce(void *num){ //Reduce function 
 	int index = *(int*)num;
 	int curSize = 0; //Size of the current linked list
 	struct HashNode *head = HashTable[index]; //Get the head of the linked list from the hashtable
 	struct HashNode *linkedList = head; //Pointer to the head to traverse the linked list
-	while(linkedList != NULL) //Gets the size of the current linked list 
-	{
+	while(linkedList != NULL){ //Gets the size of the current linked list 
 		curSize++;
 		linkedList = linkedList->next;
 	}
 	linkedList = head;
 	int linkedListTraverse = 0; //Array index for each linked list node
-	int numSort[curSize];
-	char* wordSort[curSize];
-	while(linkedList != NULL)
-	{
-		if(app == 1)
-			numSort[linkedListTraverse] = linkedList->num; //Copy the data from the linked list into an array 
-		else
-		{
-			wordSort[linkedListTraverse] = (char*) malloc(sizeof(linkedList->string));
-			strcpy(wordSort[linkedListTraverse],linkedList->string); //Copy the data from the linked list into an array 
+	int *numSort = numSort = (int *)malloc(sizeof(int)*curSize);
+	char **wordSort = (char **)malloc(sizeof(char*)*curSize);
+	while(linkedList != NULL){
+		if(app == 1){
+			numSort[linkedListTraverse] = (int)linkedList->num; //Copy the data from the linked list into an array 
+		} else {
+			wordSort[linkedListTraverse] = strdup(linkedList->string); //Copy the data from the linked list into an array 
 		}
 		linkedList = linkedList->next;
 		linkedListTraverse++;
 	}
-	if(app == 1)
-	{
+	if(app == 1){
 		qsort(numSort, curSize, sizeof(int), numCmpFunc); //Sort the current node
 		int i, j = 0;
-		reduceNode* numSortArray[curSize];
-		reduceNode* curNum;
-		for(i = 0; i < curSize; i++)
-		{
-			curNum = (reduceNode*) malloc(sizeof(reduceNode));
-			curNum->num = numSort[i];
-			numSortArray[i] = curNum;
+		struct reduceNode *numSortArray = (struct reduceNode *)malloc(sizeof(struct reduceNode)*curSize);
+		for(i = 0; i < curSize; i++){
+			numSortArray[i].num = (int)numSort[i];
 		}
 		i = 0;
-		while(sortedArray[i] != NULL)
-		{
+		while(sortedArray[i] != NULL){
 			i++;
 		}
-		for(j = 0; j < curSize; j++, i++)
-		{  
-			sortedArray[i] = numSortArray[j];
+		for(j = 0; j < curSize; j++, i++){  
+			sortedArray[i] = &numSortArray[j];
 		}
+		free(numSort);
 		return (void*) 0;
-	}
-	else
-	{
+	} else {/**
 		int i = 0;
 		while(i < curSize) //Convert all of the words to lowercase
 		{
@@ -379,57 +401,57 @@ void* reduce(void* num) //Reduce function
 			i++;
 		}
 		qsort(wordSort, curSize, sizeof(char*), stringCmpFunc); //Sort the current node	
-		
-	}
-	int curWordIndex = 0;
-	int checkWordIndex = 1;
-	int curArrayIndex = 0;
-	reduceNode *curWord;
-	reduceNode* wordCountArray[curSize];
-	while(curWordIndex < curSize)
-	{
-		curWord = (reduceNode*) malloc(sizeof(reduceNode));
-		curWord->word = wordSort[curWordIndex]; //Set the word
-		curWord->count = 1; //Start the count out at 1
-		while(strcmp(wordSort[curWordIndex], wordSort[checkWordIndex]) == 0) //While the two words are equal
+		int curWordIndex = 0;
+		int checkWordIndex = 1;
+		int curArrayIndex = 0;
+		reduceNode *curWord;
+		reduceNode* wordCountArray = (reduceNode*) malloc(sizeof(reduceNode)*curSize);
+		while(curWordIndex < curSize)
 		{
-			checkWordIndex++; //Advance the leading index check
-			curWord->count++;
-			if(checkWordIndex >= curSize) //If the leading index goes beyond the array bounds
+			curWord = (reduceNode*) malloc(sizeof(reduceNode));
+			curWord->word = wordSort[curWordIndex]; //Set the word
+			curWord->count = 1; //Start the count out at 1
+			while(strcmp(wordSort[curWordIndex], wordSort[checkWordIndex]) == 0) //While the two words are equal
 			{
+				checkWordIndex++; //Advance the leading index check
+				curWord->count++;
+				if(checkWordIndex >= curSize) //If the leading index goes beyond the array bounds
+				{
+					break;
+				}
+			}
+			if(checkWordIndex < curSize)
+			{
+				curWordIndex = checkWordIndex;
+				checkWordIndex = curWordIndex + 1;
+			}
+			else if(checkWordIndex >= curSize) //If the leading index goes beyond the array bounds
+			{
+				if(strcmp(curWord->word, wordSort[curWordIndex]) != 0)
+				{
+					curWord->word = wordSort[curWordIndex]; //Set the word
+					curWord->count = 1; //Start the count out at 1
+					curArrayIndex++;
+					wordCountArray[curArrayIndex] = curWord;
+				}
+				else
+				{
+					wordCountArray[curArrayIndex] = curWord;
+					curArrayIndex++;
+				}
 				break;
 			}
+			wordCountArray[curArrayIndex] = curWord;
+			curWord = NULL;
+			curArrayIndex++;
 		}
-		if(checkWordIndex < curSize)
+		int i = 0;
+		for(; i < curArrayIndex; i++)
 		{
-			curWordIndex = checkWordIndex;
-			checkWordIndex = curWordIndex + 1;
-		}
-		else if(checkWordIndex >= curSize) //If the leading index goes beyond the array bounds
-		{
-			if(strcmp(curWord->word, wordSort[curWordIndex]) != 0)
-			{
-				curWord->word = wordSort[curWordIndex]; //Set the word
-				curWord->count = 1; //Start the count out at 1
-				curArrayIndex++;
-				wordCountArray[curArrayIndex] = curWord;
-			}
-			else
-			{
-				wordCountArray[curArrayIndex] = curWord;
-				curArrayIndex++;
-			}
-			break;
-		}
-		wordCountArray[curArrayIndex] = curWord;
-		curWord = NULL;
-		curArrayIndex++;
-	}
-	int i = 0;
-	for(; i < curArrayIndex; i++)
-	{
-		printf("%s %d\n", wordCountArray[i]->word, wordCountArray[i]->count);
+			printf("%s %d\n", wordCountArray[i]->word, wordCountArray[i]->count);
+		}**/
+		free(wordSort);
+		return (void*) 0;
 	}
 	return (void*) 0;
-	
 }

@@ -13,12 +13,11 @@ struct shmNode{
 	int num;
 	char string[2048];
 };
-typedef struct reduceNode
-{
+struct reduceNode{
 	int count;
 	char *word;
 	int num;
-} reduceNode;
+};
 struct shmLockNode{
 	pthread_mutex_t mutex;
     pthread_cond_t  condition;
