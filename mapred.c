@@ -10,7 +10,6 @@
 #include <sys/types.h>
 #include <sys/shm.h>
 #include "mapred.h"
-
 int app = 0;
 int impl = 0;
 int maps = 0;
@@ -22,7 +21,7 @@ struct inputList *inputHead = NULL;
 int inputCount = 0;
 int largest = 0;
 int smallest = INT_MAX;
-
+reduceNode **sortedArray;
 struct HashNode **HashTable;
 int shmid;
 struct shmNode *shmArray;
@@ -54,21 +53,16 @@ int main(int argc, char **argv){
 	}
 	readInput();
 	printf("App: %d, Impl: %d, Maps: %d, Reduces: %d, inputCount %d\n", app, impl, maps, reduces,inputCount);
-	/**FOR DEBUGGING
-	
-	fflush(stdout);
-	struct inputList *inNode = inputHead;
-	while(inNode != NULL){
-		if(inNode->data != NULL){
-			printf("%s ", inNode->data);
-		}
-		inNode = inNode->next;
-	}
-	printf("\n");
-	**/
 	HashTable = (struct HashNode **)calloc(1,sizeof(struct HashNode*)*reduces);
+	sortedArray = (reduceNode **)calloc(1,sizeof(reduceNode*)*inputCount);
 	mapSetup();
-	reduce(0);
+	reduceSetup(); 
+	int i = 0;
+	while(i < inputCount)
+	{
+		printf("%s %d\n",sortedArray[i]->word, sortedArray[i]->count);
+		i++;
+	}
 	//MORE DEBUGGING
 	if(getpid() == parentID){
 		struct HashNode *temp;
@@ -84,7 +78,6 @@ int main(int argc, char **argv){
 			}
 		}
 		printf("\n");
-		
 	}
 	freeData();
 	pthread_mutex_destroy(&lock1);
@@ -170,7 +163,6 @@ void mapSetup(){
 			fflush(stdout);
 			fork();
 			if(getpid() != parentID){
-				printf("CHILD %d EXECUTING\n", x);
 				map(newHead);
 				break;
 			}
@@ -310,21 +302,24 @@ int numCmpFunc (const void * a, const void * b)
 }
 void reduceSetup()
 {
-	/*pthread_t *threadIDs;
+	pthread_t *threadIDs;
+	int* values;
 	int i = 0;
 	if(impl == 1)
 	{
 		threadIDs = (pthread_t *)malloc(sizeof(pthread_t)*reduces);
-		for(;i < reduces-1; i++)
+		values = malloc(sizeof(int)*reduces);
+		for(;i < reduces; i++)
 		{
-			pthread_create(&threadIDs[i], NULL, reduce, (void*)(&i));
+			values[i] = i;
+			pthread_create(&threadIDs[i], NULL, reduce,&values[i]);
+			sleep(1);
 		}
 	}
-	* */
 }
-void* reduce(int num) //Reduce function 
+void* reduce(void* num) //Reduce function 
 {
-	int index = num;//*(int*)num;
+	int index = *(int*)num;
 	int curSize = 0; //Size of the current linked list
 	struct HashNode *head = HashTable[index]; //Get the head of the linked list from the hashtable
 	struct HashNode *linkedList = head; //Pointer to the head to traverse the linked list
@@ -352,7 +347,7 @@ void* reduce(int num) //Reduce function
 	if(app == 1)
 	{
 		qsort(numSort, curSize, sizeof(int), numCmpFunc); //Sort the current node
-		int i;
+		int i, j = 0;
 		reduceNode* numSortArray[curSize];
 		reduceNode* curNum;
 		for(i = 0; i < curSize; i++)
@@ -361,9 +356,14 @@ void* reduce(int num) //Reduce function
 			curNum->num = numSort[i];
 			numSortArray[i] = curNum;
 		}
-		for(i =0; i < curSize; i++)
+		i = 0;
+		while(sortedArray[i] != NULL)
 		{
-			printf("%d\n", numSortArray[i]->num);
+			i++;
+		}
+		for(j = 0; j < curSize; j++, i++)
+		{  
+			sortedArray[i] = numSortArray[j];
 		}
 		return (void*) 0;
 	}
@@ -395,10 +395,8 @@ void* reduce(int num) //Reduce function
 		{
 			checkWordIndex++; //Advance the leading index check
 			curWord->count++;
-			printf("Cur word is: %s, Cur count is: %d\n", curWord->word, curWord->count);
 			if(checkWordIndex >= curSize) //If the leading index goes beyond the array bounds
 			{
-				printf("Breaking\n");
 				break;
 			}
 		}
@@ -411,7 +409,6 @@ void* reduce(int num) //Reduce function
 		{
 			if(strcmp(curWord->word, wordSort[curWordIndex]) != 0)
 			{
-				printf("Not the same\n");
 				curWord->word = wordSort[curWordIndex]; //Set the word
 				curWord->count = 1; //Start the count out at 1
 				curArrayIndex++;
@@ -434,4 +431,5 @@ void* reduce(int num) //Reduce function
 		printf("%s %d\n", wordCountArray[i]->word, wordCountArray[i]->count);
 	}
 	return (void*) 0;
+	
 }
